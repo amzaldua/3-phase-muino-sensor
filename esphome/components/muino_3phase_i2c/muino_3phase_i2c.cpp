@@ -507,4 +507,5 @@ void Muino3PhaseI2CSensor::update() {
     }
 }
 
-}  // namespace muino_3phase_i
+}  // namespace muino_3phase_i2c
+}  // namespace esphome
