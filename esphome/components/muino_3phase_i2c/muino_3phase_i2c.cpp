@@ -7,7 +7,7 @@ static const char *TAG = "muino_3phase_i2c";
 namespace esphome {
 namespace muino_3phase_i2c {
 
-bool Muino3PhaseI2CSensor::phase_coarse(int a, int b, int c) {
+bool Muino3PhaseI2CSensor::phase_coarse(int a, int b, int c); {
     static bool first = true;
 
     int max = 1500;
