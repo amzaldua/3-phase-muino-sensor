@@ -32,7 +32,8 @@ external_components:
   - source:
       type: git
       url: https://github.com/martijnvwezel/3-phase-muino-sensor
-    components: [ master ]
+    #components: [ master ]
+    components: [ muino_3phase_i2c ]
 
 i2c:
   sda: GPIO6
@@ -65,8 +66,8 @@ sensor:
     flow_rate:
       name: "Flow rate"
       reset_time: 20  # Reset time in seconds
-    time_since_last_flow:
-      name: "Last flow"
+    #time_since_last_flow:
+      #name: "Last flow"
     sensor_a:
       name: "A"
     sensor_b:
