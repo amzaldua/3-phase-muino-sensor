@@ -2,12 +2,10 @@
 #include "sensor_defs.h"
 #include "muino_3phase_i2c.h"
 
-static const char *TAG = "muino_3phase_i2c";
-
 namespace esphome {
 namespace muino_3phase_i2c {
 
-bool Muino3PhaseI2CSensor::phase_coarse(int a, int b, int c); {
+bool Muino3PhaseI2CSensor::phase_coarse(int a, int b, int c) {
     static bool first = true;
 
     int max = 1500;
@@ -51,7 +49,22 @@ bool Muino3PhaseI2CSensor::phase_coarse(int a, int b, int c); {
     state.b_max = max_average(state.b_max, b, alpha_cor);
     state.c_max = max_average(state.c_max, c, alpha_cor);
 
-    short pn[5];
+    /*
+    TODO
+    if (manual_calibration) {
+        // Manual offsets
+        a -= id(manual_offset_a);
+        b -= id(manual_offset_b);
+        c -= id(manual_offset_c);
+    } else {
+        // Auto-calibration offsets
+        a -= (id(a_min) + id(a_max)) >> 1;
+        b -= (id(b_min) + id(b_max)) >> 1;
+        c -= (id(c_min) + id(c_max)) >> 1;
+    }
+    */
+
+    short    pn[5];
     if (state.phase & 1)
         pn[0] = a + a - b - c, pn[1] = b + b - a - c,
         pn[2] = c + c - a - b; // same
@@ -105,6 +118,7 @@ void Muino3PhaseI2CSensor::update_consumption(int8_t value) {
 }
 
 float Muino3PhaseI2CSensor::mini_average(float x, float y, float alpha_cor) {
+
     if ((x + 5) <= y && y > 10) {
         return x;
     } else {
@@ -121,38 +135,52 @@ float Muino3PhaseI2CSensor::max_average(float x, float y, float alpha_cor) {
 }
 
 bool Muino3PhaseI2CSensor::write_(uint8_t addr, uint8_t reg, uint8_t val) {
-    uint8_t data[2] = {reg, val};
-    if (!this->write_bytes(addr, data, 2)) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    Wire.write(val);
+
+    if (Wire.endTransmission() != 0) {
         ESP_LOGE(TAG, "Failed to write to 0x%02X", addr);
         return false;
     }
+
     return true;
 }
 
 bool Muino3PhaseI2CSensor::write_(uint8_t addr, uint8_t reg, uint8_t* val, size_t length) {
-    uint8_t buffer[length + 1];
-    buffer[0] = reg;
-    memcpy(buffer + 1, val, length);
-    if (!this->write_bytes(addr, buffer, length + 1)) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+
+    for (size_t i = 0; i < length; i++) {
+        Wire.write(val[i]);
+    }
+
+    if (Wire.endTransmission() != 0) {
         ESP_LOGE(TAG, "Failed to write to 0x%02X", addr);
         return false;
     }
+
     return true;
 }
 
 bool Muino3PhaseI2CSensor::read_(uint8_t addr, uint8_t reg, uint8_t* data, size_t length) {
-    if (!this->write_bytes(addr, &reg, 1)) {
-        ESP_LOGE(TAG, "Failed to write register to 0x%02X", addr);
-        return false;
-    }
-    if (!this->read_bytes(addr, data, length)) {
+    Wire.beginTransmission(addr);
+    Wire.write(reg);
+    if (Wire.endTransmission(false) != 0) {
         ESP_LOGE(TAG, "Failed to read from 0x%02X", addr);
         return false;
     }
+
+    Wire.requestFrom(addr, length);
+    for (size_t i = 0; i < length && Wire.available(); i++) {
+        data[i] = Wire.read();
+    }
+
     return true;
 }
 
 void Muino3PhaseI2CSensor::set_pin_io_(uint8_t pin_number, bool value) {
+    // GOOD
     uint8_t current;
     read_(PI4IO_I2C_ADDR, PI4IO_OUTPUT, &current, 1);
     if (value)
@@ -176,6 +204,7 @@ void Muino3PhaseI2CSensor::init_light_sensor_(uint8_t sensor_id) {
     }
 
     // Gain: x2, It: 100ms
+    // 1<<11, 1<<12, 1<<9
     uint8_t data_wr[2] = {0x00, (1 << 0)};  
     write_(VEML6030_I2C_ADDR_H, VEML6030_ALS_SD, (uint8_t*)&data_wr, 2);
 
@@ -193,6 +222,7 @@ void Muino3PhaseI2CSensor::init_light_sensor_(uint8_t sensor_id) {
 uint16_t Muino3PhaseI2CSensor::read_sensor_(uint8_t sensor_id) {
     uint16_t val = 0;
 
+    // Set address input for correct sensor
     if (sensor_id == 0)
         this->set_pin_io_(3, true);
     else if (sensor_id == 1)
@@ -200,6 +230,7 @@ uint16_t Muino3PhaseI2CSensor::read_sensor_(uint8_t sensor_id) {
     else if (sensor_id == 2)
         this->set_pin_io_(5, true);
 
+    // Read sensor value
     read_(VEML6030_I2C_ADDR_H, VEML6030_ALS_READ_REG, (uint8_t*)&val, 2);
 
     if (sensor_id == 0)
@@ -212,6 +243,7 @@ uint16_t Muino3PhaseI2CSensor::read_sensor_(uint8_t sensor_id) {
     return val;
 }
 
+// Accumulate value to calculate the flow rate
 void Muino3PhaseI2CSensor::flow_rate_push_value_(float value) {
     flow_rate_values_[flow_rate_index_] = value;
     flow_rate_index_ = (flow_rate_index_ + 1) % 5;
@@ -223,6 +255,7 @@ void Muino3PhaseI2CSensor::flow_rate_push_value_(float value) {
     flow_rate = sum / 5;
 }
 
+// Phase has been incremented, push a new value
 void Muino3PhaseI2CSensor::flow_rate_increment_() {
     constexpr float CONVERSION_FACTOR = 10.0; // 60 sec / 6 phases = 10
 
@@ -234,6 +267,7 @@ void Muino3PhaseI2CSensor::flow_rate_increment_() {
     flow_rate_last_time_ = current_time;
 }
 
+// If no new flow rate for flow_rate_reset_time_, push a 0 value
 void Muino3PhaseI2CSensor::flow_rate_reset_() {
     float current_time = millis() / 1000.0;
     float delta_t = current_time - flow_rate_last_time_;
@@ -271,6 +305,8 @@ void Muino3PhaseI2CSensor::save_consumptions(bool shutdown_occured) {
         tertiary_saved = tertiary_consumption;
     }
 
+    // Shutdown occured, all values is now saved: We create a marker
+    // to be able to check this on the next boot.
     if (shutdown_occured && measurements_consistency_sensor_) {
         shutdown_consistency_pref_.save(&shutdown_value_);
     }
@@ -293,6 +329,8 @@ void Muino3PhaseI2CSensor::restore_consumptions(bool startup_occured) {
         tertiary_consumption = 0;
     }
 
+    // We ignore this if the measurements consistency sensor
+    // is not activated in the configuration
     if (startup_occured && measurements_consistency_sensor_) {
         uint8_t value = 0;
         shutdown_consistency_pref_.load(&value);
@@ -356,6 +394,8 @@ void Muino3PhaseI2CSensor::setup() {
 }
 
 void Muino3PhaseI2CSensor::update_values_() {
+    static uint32_t last_time = 0;
+
     float ml_part = state.phase / 6.0;
 
     if (index_sensor_ != nullptr)
@@ -387,16 +427,19 @@ void Muino3PhaseI2CSensor::update_values_() {
 
     if (flow_rate_sensor_ != nullptr)
         flow_rate_sensor_->publish_state((float)flow_rate);
+
 }
 
 void Muino3PhaseI2CSensor::set_index(int value) {
     index_ = value;
 
+    // Currently, to accept the consistency of the sensor, the only way is to write the index.
     if (measurements_consistency_sensor_)
         measurements_consistency_sensor_->publish_state(false);
 }
 
 void Muino3PhaseI2CSensor::reset_total() {
+    // Todo...
     init_ok_ = false;
     state.liters = 0;
     state.phase = 0;
@@ -432,6 +475,7 @@ void Muino3PhaseI2CSensor::set_led(bool state) {
 
 void Muino3PhaseI2CSensor::update() {
     static uint8_t status = 0;
+    static uint32_t last_time = 0;
     uint32_t now = millis();
     char buffer[50];
 
@@ -472,6 +516,9 @@ void Muino3PhaseI2CSensor::update() {
         last_update_ = millis();
     }
 
+    // If 1 minute has passed since the last flow,
+    // set previous_consumption to current_consumption and
+    // reset the current counter to 0
     if (now - time_since_last_flow_ > 60000 && current_consumption_ > 0) {
         previous_consumption_ = current_consumption_;
         current_consumption_ = 0;
@@ -479,44 +526,57 @@ void Muino3PhaseI2CSensor::update() {
 
     switch (status) {
     case 0:
+        // First: Do the setup
         setup();
+
         update_values_();
-        status = 1;
-        break;
     case 1:
+        // Second: Read the sensor without LED
         sen_a_dark_ = read_sensor_(0);
         sen_b_dark_ = read_sensor_(1);
         sen_c_dark_ = read_sensor_(2);
+
+        // Power ON LED for the next step
         set_led(true);
+
         status = 2;
         break;
     case 2:
+        // Third: Read the sensor with LED
         sen_a_light_ = read_sensor_(0);
         sen_b_light_ = read_sensor_(1);
         sen_c_light_ = read_sensor_(2);
+
+        // Power OFF LED for the next step
         set_led(false);
+
         history_a_[history_index_] = sen_a_light_ - sen_a_dark_;
         history_b_[history_index_] = sen_b_light_ - sen_b_dark_;
         history_c_[history_index_] = sen_c_light_ - sen_c_dark_;
         history_index_ = (history_index_ + 1) % 3;
+
         state.a = (history_a_[0] + history_a_[1] + history_a_[2]) / 3;
         state.b = (history_b_[0] + history_b_[1] + history_b_[2]) / 3;
         state.c = (history_c_[0] + history_c_[1] + history_c_[2]) / 3;
-        break;
-    default:
-        status = 0;
+
+        phase_coarse(state.a, state.b, state.c);
+
+        status = 1;
         break;
     }
 
-void Muino3PhaseI2CSensor::dump_config() {
-  ESP_LOGCONFIG(TAG, "Muino3PhaseI2CSensor:");
-  // Aquí puedes añadir más detalles de configuración si quieres mostrar
+    flow_rate_reset_();
+
+    last_time = now;
 }
 
-// Cierre de namespaces
-}  // namespace muino_3phase_i2c
-}  // namespace esphome
+void Muino3PhaseI2CSensor::dump_config() {
+    ESP_LOGCONFIG(TAG, "Muino 3-Phase Sensor:");
+    LOG_I2C_DEVICE(this);
+    if (this->is_failed()) {
+        ESP_LOGE(TAG, "Communication failed");
+    }
+}
 
-
-}  // namespace muino_3phase_i2c
-}  // namespace esphome
+} // namespace muino_3phase_i2c
+} // namespace esphome
