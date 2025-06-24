@@ -1,6 +1,7 @@
 #include "esphome.h"
 #include "sensor_defs.h"
 #include "muino_3phase_i2c.h"
+#include <Wire.h>
 
 namespace esphome {
 namespace muino_3phase_i2c {
