@@ -2,6 +2,8 @@
 #include "sensor_defs.h"
 #include "muino_3phase_i2c.h"
 
+static const char *TAG = "muino_3phase_i2c";
+
 namespace esphome {
 namespace muino_3phase_i2c {
 
@@ -505,7 +507,16 @@ void Muino3PhaseI2CSensor::update() {
         status = 0;
         break;
     }
+
+void Muino3PhaseI2CSensor::dump_config() {
+  ESP_LOGCONFIG(TAG, "Muino3PhaseI2CSensor:");
+  // Aquí puedes añadir más detalles de configuración si quieres mostrar
 }
+
+// Cierre de namespaces
+}  // namespace muino_3phase_i2c
+}  // namespace esphome
+
 
 }  // namespace muino_3phase_i2c
 }  // namespace esphome
