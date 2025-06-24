@@ -49,7 +49,7 @@ bool Muino3PhaseI2CSensor::phase_coarse(int a, int b, int c) {
     state.b_max = max_average(state.b_max, b, alpha_cor);
     state.c_max = max_average(state.c_max, c, alpha_cor);
 
-    short    pn[5];
+    short pn[5];
     if (state.phase & 1)
         pn[0] = a + a - b - c, pn[1] = b + b - a - c,
         pn[2] = c + c - a - b; // same
@@ -499,4 +499,12 @@ void Muino3PhaseI2CSensor::update() {
         history_index_ = (history_index_ + 1) % 3;
         state.a = (history_a_[0] + history_a_[1] + history_a_[2]) / 3;
         state.b = (history_b_[0] + history_b_[1] + history_b_[2]) / 3;
-        state.c = (history_c_[0
+        state.c = (history_c_[0] + history_c_[1] + history_c_[2]) / 3;
+        break;
+    default:
+        status = 0;
+        break;
+    }
+}
+
+}  // namespace muino_3phase_i
